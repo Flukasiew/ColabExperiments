@@ -144,7 +144,7 @@ def GenerateCropped(ly_string, filename, command='-fpng'):
         f.close()
     except:
         return False
-    command = 'lilypond -dpreview %s -o "%s" "%s.ly"' % (command, filename, filename)
+    command = 'lilypond -dresolution=300 -dpreview %s -o "%s" "%s.ly"' % (command, filename, filename)
     p = subprocess.Popen(command, shell=True).wait()
     os.remove(filename + '.ly')
     return True
@@ -299,8 +299,8 @@ if __name__ == '__main__':
         os.mkdir(settings["t"])
     print(settings)
     for i in range(settings["n"]):
-        beats = random.choices([3,4],weights=[0.25,0.75], k=1)[0]
-        count = int(random.uniform(1,5))
+        beats = 4 #random.choices([3,4],weights=[0.25,0.75], k=1)[0]
+        count = random.choices([1,2,3,4,5],weights=[1,1,1,1,1], k=1)[0]
         track = NewTrack(beats,count,withChromatics=False,with16=False)
         track_string = LilyPond.from_Track(track)
         track_string_clean = CleanTrack(track_string)
@@ -309,7 +309,7 @@ if __name__ == '__main__':
         src   = cv2.imread('tmp_track.jpg')
         src    = src[...,::-1] # BGR to RGB
         im = randomWarpImage(src,settings["x"],settings["y"],settings["z"])
-        im = Image.fromarray(im)
+        im = Image.fromarray(im[:,150:,:])
 
         im.save(f"./{settings['p']}/example_{i}.jpg")
         with open(f"./{settings['t']}/example_{i}.txt", "w") as text_file:
