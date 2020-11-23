@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 #
 # generate imports
 import mingus.core.notes as notes
@@ -17,9 +16,6 @@ import numpy as np
 import cv2
 import re
 
-# script handling
-import getopt
-import sys
 
 # stałe globalne
 allNotesM = [
@@ -273,51 +269,41 @@ def imgConvert(from_name, to_name):
     rgb_im.save(to_name)
 
 
-# Construct 3D rotation matrix when rotations around x,y,z axes are specified
-def construct_RotationMatrixHomogenous(rotation_angles):
-    assert type(rotation_angles) == list and len(rotation_angles) == 3
-    RH = np.eye(4, 4)
-    cv2.Rodrigues(np.array(rotation_angles), RH[0:3, 0:3])
-    return RH
-
-
-# https://en.wikipedia.org/wiki/Rotation_matrix
 def getRotationMatrixManual(rotation_angles):
 
     rotation_angles = [np.deg2rad(x) for x in rotation_angles]
 
-    phi = rotation_angles[0]  # around x
-    gamma = rotation_angles[1]  # around y
-    theta = rotation_angles[2]  # around z
+    x_angle = rotation_angles[0]
+    y_angle = rotation_angles[1]
+    z_angle = rotation_angles[2]
 
     # X rotation
-    Rphi = np.eye(4, 4)
-    sp = np.sin(phi)
-    cp = np.cos(phi)
-    Rphi[1, 1] = cp
-    Rphi[2, 2] = Rphi[1, 1]
-    Rphi[1, 2] = -sp
-    Rphi[2, 1] = sp
+    Rx_angle = np.eye(4, 4)
+    sp = np.sin(x_angle)
+    cp = np.cos(x_angle)
+    Rx_angle[1, 1] = cp
+    Rx_angle[2, 2] = Rx_angle[1, 1]
+    Rx_angle[1, 2] = -sp
+    Rx_angle[2, 1] = sp
 
     # Y rotation
-    Rgamma = np.eye(4, 4)
-    sg = np.sin(gamma)
-    cg = np.cos(gamma)
-    Rgamma[0, 0] = cg
-    Rgamma[2, 2] = Rgamma[0, 0]
-    Rgamma[0, 2] = sg
-    Rgamma[2, 0] = -sg
+    Ry_angle = np.eye(4, 4)
+    sg = np.sin(y_angle)
+    cg = np.cos(y_angle)
+    Ry_angle[0, 0] = cg
+    Ry_angle[2, 2] = Ry_angle[0, 0]
+    Ry_angle[0, 2] = sg
+    Ry_angle[2, 0] = -sg
 
-    # Z rotation (in-image-plane)
-    Rtheta = np.eye(4, 4)
-    st = np.sin(theta)
-    ct = np.cos(theta)
-    Rtheta[0, 0] = ct
-    Rtheta[1, 1] = Rtheta[0, 0]
-    Rtheta[0, 1] = -st
-    Rtheta[1, 0] = st
+    Rz_angle = np.eye(4, 4)
+    st = np.sin(z_angle)
+    ct = np.cos(z_angle)
+    Rz_angle[0, 0] = ct
+    Rz_angle[1, 1] = Rz_angle[0, 0]
+    Rz_angle[0, 1] = -st
+    Rz_angle[1, 0] = st
 
-    R = reduce(lambda x, y: np.matmul(x, y), [Rphi, Rgamma, Rtheta])
+    R = reduce(lambda x, y: np.matmul(x, y), [Rx_angle, Ry_angle, Rz_angle])
 
     return R
 
@@ -341,7 +327,7 @@ def getPoints_for_PerspectiveTranformEstimation(ptsIn, ptsOut, W, H, sidelength)
     return pin, pout
 
 
-def warpMatrix(W, H, theta, phi, gamma, scale, fV):
+def warpMatrix(W, H, z_angle, x_angle, y_angle, scale, fV):
 
     # M is to be estimated
     M = np.eye(4, 4)
@@ -358,7 +344,7 @@ def warpMatrix(W, H, theta, phi, gamma, scale, fV):
     T[2, 3] = -h
 
     # Rotation matrices around x,y,z
-    R = getRotationMatrixManual([phi, gamma, theta])
+    R = getRotationMatrixManual([x_angle, y_angle, z_angle])
 
     # Projection Matrix
     P = np.eye(4, 4)
@@ -368,14 +354,8 @@ def warpMatrix(W, H, theta, phi, gamma, scale, fV):
     P[2, 3] = -(2.0 * f * n) / (f - n)
     P[3, 2] = -1.0
 
-    # pythonic matrix multiplication
     F = reduce(lambda x, y: np.matmul(x, y), [P, T, R])
 
-    # shape should be 1,4,3 for ptsIn and ptsOut since perspectiveTransform() expects data in this way.
-    # In C++, this can be achieved by Mat ptsIn(1,4,CV_64FC3);
-    #    ptsIn = np.array([[
-    #                 [-W/2., H/2., 0.],[ W/2., H/2., 0.],[ W/2.,-H/2., 0.],[-W/2.,-H/2., 0.]
-    #                 ]])
     ptsIn = np.array(
         [
             [
@@ -392,7 +372,6 @@ def warpMatrix(W, H, theta, phi, gamma, scale, fV):
     ptsInPt2f, ptsOutPt2f = getPoints_for_PerspectiveTranformEstimation(
         ptsIn, ptsOut, W, H, sideLength
     )
-    # check float32 otherwise OpenCV throws an error
     assert ptsInPt2f.dtype == np.float32
     assert ptsOutPt2f.dtype == np.float32
     M33 = cv2.getPerspectiveTransform(ptsInPt2f, ptsOutPt2f)
@@ -405,7 +384,6 @@ def warpImage(src, theta, phi, gamma, scale, fovy, corners=None):
     M, sl, ptsIn, ptsOut = warpMatrix(W, H, theta, phi, gamma, scale, fovy)
     # Compute warp matrix
     sl = int(sl)
-    # print('Output image dimension = {}'.format(sl))
     dst = cv2.warpPerspective(src, M, (sl, sl), borderValue=[255, 255, 255])
     # Do actual image warp
     left_right_margin = random.uniform(2, 50)
@@ -453,10 +431,8 @@ def handle_multi_track():
     )
     GenerateCropped(image_track, "temp_to_split")
     src = cv2.imread("temp_to_split.preview.png")
-    src = src[..., ::-1]  # BGR to RGB
+    # src = src[..., ::-1]  # BGR to RGB
     src = randomWarpImage(src)
-    # im = Image.fromarray(src)
-    # plt.imshow(src)
     H, W, Nc = src.shape
     r = random.random()
     if r < 0.33:
@@ -502,9 +478,13 @@ def GenerateRandomPhoto(name, data_dir_path="./Data"):
     else:
         ground_track, image_track, src = handle_multi_track()
     src = addRandomDist(src)
+    grayImage = cv2.cvtColor(src, cv2.COLOR_BGR2GRAY)
+    post_bin = cv2.threshold(grayImage, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+    src = cv2.cvtColor(post_bin, cv2.COLOR_GRAY2RGB)
     ground_track = (
         ground_track.replace("{ {", "").replace("} {", "|").replace("} }", "|")
     )
+    ground_track = ground_track.replace("\\time 3/4 ", "")
     im = Image.fromarray(src)
     os.mkdir(f"{data_dir_path}/{name}")
     im.save(f"{data_dir_path}/{name}/{name}.jpg")
